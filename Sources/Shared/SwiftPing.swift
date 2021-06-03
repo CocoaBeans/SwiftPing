@@ -20,7 +20,7 @@ func getIPv4AddressFromHost(host:String, error:AutoreleasingUnsafeMutablePointer
     if status == false {
         
         if Int32(streamError.domain)  == kCFStreamErrorDomainNetDB {
-            error.pointee = NSError(domain: kCFErrorDomainCFNetwork as String, code: Int(CFNetworkErrors.cfHostErrorUnknown.rawValue) , userInfo: [kCFGetAddrInfoFailureKey as NSObject : "error in host name or address lookup"])
+            error.pointee = NSError(domain: kCFErrorDomainCFNetwork as String, code: Int(CFNetworkErrors.cfHostErrorUnknown.rawValue) , userInfo: [(kCFGetAddrInfoFailureKey as NSObject) as! String : "error in host name or address lookup"])
         }
         else{
             error.pointee = NSError(domain: kCFErrorDomainCFNetwork as String, code: Int(CFNetworkErrors.cfHostErrorUnknown.rawValue) , userInfo: nil)
@@ -76,7 +76,7 @@ public class SwiftPing: NSObject {
     private var currentSequenceNumber:UInt64 = 0
     private var currentStartDate:Date?
     
-    private var timeoutBlock:((Void) -> Void)?
+    private var timeoutBlock:(() -> Void)?
     
     private var currentQueue:DispatchQueue?
     
@@ -147,12 +147,16 @@ public class SwiftPing: NSObject {
         
         // 1
         var info:UnsafeMutableRawPointer = info
-        guard let ping:SwiftPing = (withUnsafePointer(to: &info) { (temp) in
+        let ping:SwiftPing = (withUnsafePointer(to: &info) { (temp) in
             return unsafeBitCast(temp, to: SwiftPing.self)
-        })else{
-            print("ping callback object is nil")
-            return
-        }
+        })
+        
+//        guard let ping:SwiftPing = (withUnsafePointer(to: &info) { (temp) in
+//            return unsafeBitCast(temp, to: SwiftPing.self)
+//        })else{
+//            print("ping callback object is nil")
+//            return
+//        }
         
         if (type as CFSocketCallBackType) == CFSocketCallBackType.dataCallBack {
             
@@ -181,16 +185,14 @@ public class SwiftPing: NSObject {
         context.info = unsafeBitCast(self, to: UnsafeMutableRawPointer.self);
         
         
-        self.socket = CFSocketCreate(kCFAllocatorDefault, AF_INET, SOCK_DGRAM, IPPROTO_ICMP, CFSocketCallBackType.dataCallBack.rawValue,  {
+        socket = CFSocketCreate(kCFAllocatorDefault, AF_INET, SOCK_DGRAM, IPPROTO_ICMP, CFSocketCallBackType.dataCallBack.rawValue,  {
             (socket, type, address, data, info )  in
             
             var info:UnsafeMutableRawPointer = info!
-            guard let ping:SwiftPing = (withUnsafePointer(to: &info) { (temp) in
-                return unsafeBitCast(temp, to: SwiftPing.self)
-            })else{
-                print("ping callback object is nil")
-                return
-            }
+            let ping:SwiftPing = (withUnsafePointer(to: &info) { (temp) in
+                unsafeBitCast(temp, to: SwiftPing.self)
+            })
+
             
             print("ping - \(ping) ")
             if (type as CFSocketCallBackType) == CFSocketCallBackType.dataCallBack {
@@ -291,18 +293,15 @@ public class SwiftPing: NSObject {
         var icmpHeaderData:NSData?
         var icmpData:NSData?
         
-        let extractIPAddressBlock: (Void) -> String? = {
+        let extractIPAddressBlock: () -> String? = {
             if ipHeaderData == nil {
                 return nil
             }
             
             var bytes:UnsafeRawPointer = (ipHeaderData?.bytes)!
-            guard let ipHeader:IPHeader = (withUnsafePointer(to: &bytes) { (temp) in
+            let ipHeader:IPHeader = (withUnsafePointer(to: &bytes) { (temp) in
                 return unsafeBitCast(temp, to: IPHeader.self)
-            })else{
-                print("ipheader data is nil")
-                return nil
-            }
+            })
             
             let sourceAddr:[UInt8] = ipHeader.sourceAddress
             
@@ -342,7 +341,7 @@ public class SwiftPing: NSObject {
         
         let icmpPackage:NSData = ICMPPackageCreate(identifier: UInt16(self.identifier!), sequenceNumber: UInt16(self.currentSequenceNumber), payloadSize: UInt32(self.configuration!.payloadSize))!;
         
-        let socketError:CFSocketError = CFSocketSendData(socket!, self.ipv4address as! CFData, icmpPackage as CFData, self.configuration!.timeOutInterval)
+        let socketError:CFSocketError = CFSocketSendData(socket!, self.ipv4address! as CFData, icmpPackage as CFData, self.configuration!.timeOutInterval)
         
         if socketError == CFSocketError.error {
             let error = NSError(domain: NSURLErrorDomain, code:NSURLErrorCannotFindHost, userInfo: [:])
