@@ -7,7 +7,7 @@
 //
 
 import XCTest
-import SwiftPing
+@testable import SwiftPing
 
 class SwiftPingTest: XCTestCase {
 
@@ -22,19 +22,29 @@ class SwiftPingTest: XCTestCase {
     func testExample() throws {
         // This is an example of a functional test case.
         // Use XCTAssert and related functions to verify your tests produce the correct results.
-        guard let ping = SwiftPing(host: "8.8.8.8", configuration: PingConfiguration(pInterval: 5, withTimeout: 30), queue: DispatchQueue.global(), completion: {
+        let hostname = "24mountains.com"
+        guard let ping = SwiftPing(host: hostname, configuration: PingConfiguration(pInterval: 5, withTimeout: 30), queue: DispatchQueue.main, completion: {
             response in
-            print("\(response.duration * 1000) ms")
-            print("\(response.ipAddress)")
-            print("\(response.error)")
+            print("\(response.duration) ms")
+            print("\(response.ipAddress ?? "InvalidIP")")
+            if let error = response.error  {
+                print("\(String(describing: error))")
+                if error.code == NSURLErrorCannotFindHost {
+                    print("NSURLErrorCannotFindHost")
+                }
+                else if error.code == NSURLErrorCannotDecodeRawData {
+                    print("NSURLErrorCannotDecodeRawData")
+                }
+                XCTFail()
+            }
         })
         else {
             XCTFail()
             return
         }
 
-        DispatchQueue.main.async { ping.start() }
-        RunLoop.main.run()
+        ping.start()
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 111))
     }
 
 //    func testPerformanceExample() throws {

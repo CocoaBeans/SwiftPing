@@ -66,11 +66,11 @@ enum ICMPType:UInt8{
 
 // helper
 
-@inline(__always) func ICMPPackageCreate(identifier:UInt16, sequenceNumber:UInt16, payloadSize:UInt32)->NSData?
-{
+@inline(__always) func ICMPPackageCreate(identifier: UInt16, sequenceNumber: UInt16, payloadSize: UInt32) -> NSData? {
+    //let packet:String = "\(arc4random()) bottles of beer on the wall sdnwjdn  dskjwebdkjb wekjdnqkjdb wekjdbqewkjdbkjewvb wekjbdkqjwbdkjqbvkj bkjbdkqjwbdkqjwb webdwbeo23oeh08eobqwkjbkjwd bkj2bqkjfbcwkdvbwekj bwkejbdqjkwdbqkjwbc wekjqbfkjqwbdqkjevb wekjbfkj bwekjqwbdkqjbvkjwdb kwbfqhwebd12douc2wevb qbdkjqwbd"
+    //let packet:String = "FEEEDFACEDEEADBEEFFEEEDFACEDEEADBEEFFEEEDFACEDEEADBEEFFEEEDFACEDEEADBEEFFEEEDFACEDEEADBEEFFEEEDFACEDEEADBEEFFEEEDFACEDEEADBEEFFEEEDFACEDEEADBEEFFEEEDFACEDEEADBEEFFEEEDFACEDEEADBEEFFEEEDFACEDEEADBEEFFEEEDFACEDEEADBEEFFEEEDFACEDEEADBEEFFEEEDFACEDEEADBEEFFEEEDFACEDEEADBEEFFEEEDFACEDEEA"
+    let packet:String = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 
-    let packet:String = "\(arc4random()) bottles of beer on the wall sdnwjdn  dskjwebdkjb wekjdnqkjdb wekjdbqewkjdbkjewvb wekjbdkqjwbdkjqbvkj bkjbdkqjwbdkqjwb webdwbeo23oeh08eobqwkjbkjwd bkj2bqkjfbcwkdvbwekj bwkejbdqjkwdbqkjwbc wekjqbfkjqwbdqkjevb wekjbfkj bwekjqwbdkqjbvkjwdb kwbfqhwebd12douc2wevb qbdkjqwbd"
-    
 	// Construct the ping packet.
 	var payload:NSData = NSData(data: packet.data(using: String.Encoding.utf8)!)
     payload = payload.subdata(with: NSMakeRange(0, Int(payloadSize))) as NSData
@@ -113,19 +113,71 @@ enum ICMPType:UInt8{
 	return package;
 }
 
+func IMCPPacketSize() -> Int {
+	MemoryLayout<IPHeader>.size+MemoryLayout<ICMPHeader>.size
+}
+
 @inline(__always) func ICMPExtractResponseFromData(data:NSData, ipHeaderData:AutoreleasingUnsafeMutablePointer<NSData?>, ipData:AutoreleasingUnsafeMutablePointer<NSData?>, icmpHeaderData:AutoreleasingUnsafeMutablePointer<NSData?>, icmpData:AutoreleasingUnsafeMutablePointer<NSData?>)-> Bool{
 
+	let combinedHeaderSize = MemoryLayout<IPHeader>.size + MemoryLayout<ICMPHeader>.size
+	//let buffer:NSMutableData = (data.subdata(with: NSMakeRange(0, combinedHeaderSize))  as NSData).mutableCopy() as! NSMutableData
 	let buffer:NSMutableData = data.mutableCopy() as! NSMutableData
 
-	if buffer.length < (MemoryLayout<IPHeader>.size+MemoryLayout<ICMPHeader>.size) {
+	if buffer.length < combinedHeaderSize {
 		return false
 	}
+	print("buffer: \(buffer)")
 
-	var mutableBytes = buffer.mutableBytes;
+	let ipHeaderBuffer = buffer.subdata(with: NSMakeRange(0, MemoryLayout<IPHeader>.size)) as NSData
+	print("ipHeaderBuffer: \(ipHeaderBuffer)")
 
-	let ipHeader = (withUnsafePointer(to: &mutableBytes) { (temp) in
-		unsafeBitCast(temp, to: IPHeader.self)
-	})
+	let ipHeaderMutableBuffer = ipHeaderBuffer.mutableCopy() as! NSMutableData
+	var mutableBytes = buffer.mutableBytes
+
+	var bindMemory = mutableBytes.bindMemory(to: IPHeader.self, capacity: 1)
+	print("bindMemory: \(bindMemory)")
+
+	let pointer: OpaquePointer = OpaquePointer(ipHeaderMutableBuffer.mutableBytes)
+	let castMutablePointer: UnsafeMutablePointer<IPHeader> = UnsafeMutablePointer<IPHeader>(pointer)
+	print("testIPHeader: \(castMutablePointer)")
+/// Returns the bits of the given instance, interpreted as having the specified
+/// type.
+///
+/// Use this function only to convert the instance passed as `x` to a
+/// layout-compatible type when conversion through other means is not
+/// possible. Common conversions supported by the Swift standard library
+/// include the following:
+///
+/// - Value conversion from one integer type to another. Use the destination
+///   type's initializer or the `numericCast(_:)` function.
+/// - Bitwise conversion from one integer type to another. Use the destination
+///   type's `init(truncatingIfNeeded:)` or `init(bitPattern:)` initializer.
+/// - Conversion from a pointer to an integer value with the bit pattern of the
+///   pointer's address in memory, or vice versa. Use the `init(bitPattern:)`
+///   initializer for the destination type.
+/// - Casting an instance of a reference type. Use the casting operators (`as`,
+///   `as!`, or `as?`) or the `unsafeDowncast(_:to:)` function. Do not use
+///   `unsafeBitCast(_:to:)` with class or pointer types; doing so may
+///   introduce undefined behavior.
+///
+/// - Parameters:
+///   - x: The instance to cast to `type`.
+///   - type: The type to cast `x` to. `type` and the type of `x` must have the
+///     same size of memory representation and compatible memory layout.
+/// - Returns: A new instance of type `U`, cast from `x`.
+	print("MemoryLayout<IPHeader>.size: \(MemoryLayout<IPHeader>.size)")
+	print("MemoryLayout<UnsafeMutableRawPointer>.size: \(MemoryLayout<UnsafeMutablePointer<IPHeader>>.size)")
+
+//	let ipHeader = Unmanaged<IPHeader>.fromOpaque(ipHeaderMutableBuffer.mutableBytes).takeRetainedValue()
+
+	let ipHeader: IPHeader = unsafeBitCast(ipHeaderMutableBuffer.mutableBytes.assumingMemoryBound(to: IPHeader.self), to: IPHeader.self)
+//	var ipHeader = withUnsafeBytes(of: &mutableBytes) {
+//		(pointer: UnsafeRawBufferPointer) in
+//		unsafeBitCast(pointer, to: IPHeader.self)
+//	}
+//	let ipHeader = (withUnsafePointer(to: mutableBytes) { (temp) in
+//		unsafeBitCast(temp, to: IPHeader.self)
+//	})
 
 	assert((ipHeader.versionAndHeaderLength & 0xF0) == 0x40)     // IPv4
 	assert(ipHeader.protocol == 1)                               // ICMP
