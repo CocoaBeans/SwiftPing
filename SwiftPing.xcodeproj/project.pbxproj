@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0A23C1ED266D326A00B22462 /* SwiftPingTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A23C1EC266D326A00B22462 /* SwiftPingTest.swift */; };
+		0A23C1EE266D326A00B22462 /* SwiftPingTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A23C1EC266D326A00B22462 /* SwiftPingTest.swift */; };
 		97336BCB1D2BAE70005B194A /* ICMP.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97336BC71D2BAE70005B194A /* ICMP.swift */; };
 		97336BCC1D2BAE70005B194A /* PingConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97336BC81D2BAE70005B194A /* PingConfiguration.swift */; };
 		97336BCD1D2BAE70005B194A /* PingResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97336BC91D2BAE70005B194A /* PingResponse.swift */; };
