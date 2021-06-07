@@ -13,7 +13,7 @@ public let sharedPingController = SwiftPing(host: "0.0.0.0", configuration: Ping
     (response: PingResponse) in
     print("\(response.duration * 1000) ms")
     print("\(response.ipAddress ?? "InvalidIP")")
-    print("\(response.error)")
+    if let error = response.error { print("\(error)") }
 }
 
 
@@ -66,9 +66,9 @@ internal func socketDataCallback(socket: CFSocket?, type:CFSocketCallBackType, a
     // Conditional cast from 'SwiftPing' to 'SwiftPing' always succeeds
     guard
             let socket = socket,
-            var address = address,
+            //var address = address,
             let data = data,
-            var info:UnsafeMutableRawPointer = info
+            let info:UnsafeMutableRawPointer = info
     else {
         print("socketCallback nil values!")
         return;
@@ -76,15 +76,10 @@ internal func socketDataCallback(socket: CFSocket?, type:CFSocketCallBackType, a
 
     if (type as CFSocketCallBackType) == .dataCallBack {
         print("CFSocketCallBackType.dataCallBack")
-        let cfdata = Unmanaged<NSData>.fromOpaque(data).takeRetainedValue() as Data
-        let ping = Unmanaged<SwiftPing>.fromOpaque(info).takeRetainedValue()
-        ping.socket(socket: socket, didReadData: cfdata)
-
-//        let fData = data.assumingMemoryBound(to: UInt8.self)
-//        let bytes = UnsafeBufferPointer<UInt8>(start: fData, count: MemoryLayout<UInt8>.size)
-//        let cfdata:Data = Data(buffer: bytes)
-//        let ping = unsafeBitCast(info, to: SwiftPing.self)
-//        ping.socket(socket: socket, didReadData: cfdata)
+        let cfdata = Unmanaged<NSData>.fromOpaque(data).takeUnretainedValue() as Data
+        let data = cfdata
+        let ping = Unmanaged<SwiftPing>.fromOpaque(info).takeUnretainedValue()
+        ping.socket(socket: socket, didReadData: data)
     }
 }
 
@@ -133,9 +128,7 @@ public class SwiftPing: NSObject, StreamDelegate {
 
     private var inputStream: InputStream?
     private var outputStream: OutputStream?
-    private var pingStartDate: Date?
-    private var pingEndDate: Date?
-    private var packetLog: [PingLog] = []
+    private var packetLog: [PingLog] = [PingLog(sequenceNumber: 0, startDate: Date(), endDate: Date())]
 
 /// init a new ping object pointed at the host url, with provided configuration.
     ///
@@ -364,6 +357,39 @@ public class SwiftPing: NSObject, StreamDelegate {
         }
     }
 
+    func extractIPHeader(ipHeaderData: NSData?) -> IPHeader? {
+        if ipHeaderData == nil {
+            return nil
+        }
+
+        let bytes:UnsafeRawPointer = (ipHeaderData?.bytes)!
+        // The following used to be handled by a single call to unsafeBitCast?
+//            let ipHeader:IPHeader = (withUnsafePointer(to: &bytes) { (temp) in
+//                unsafeBitCast(temp, to: IPHeader.self)
+//            })
+        // TODO: Revisit if this is the best way to do it
+        let truncatedSize = MemoryLayout<IPHeader>.size - (MemoryLayout<[UInt8]>.size * 2)
+        var ipHeader: IPHeader = IPHeader(versionAndHeaderLength: 0, differentiatedServices: 0, totalLength: 0, identification: 0, flagsAndFragmentOffset: 0, timeToLive: 0, protocol: 0, headerChecksum: 0, sourceAddress: [], destinationAddress: [])
+        withUnsafeMutableBytes(of: &ipHeader) { (pointer: UnsafeMutableRawBufferPointer) -> Void in
+            // We are truncating how much data is copied into the struct because it crashes when we copy more
+            memcpy(pointer.baseAddress!, bytes, truncatedSize)
+        }
+        //print("ipHeader: \(ipHeader)")
+        let srcAddrData = (ipHeaderData?.subdata(with: NSMakeRange(truncatedSize, MemoryLayout<[UInt8]>.size)))!
+
+        var sourceAddr:[UInt8] = [UInt8](repeating: 0,  count: 4)
+        var index = 0
+        for data in srcAddrData {
+            sourceAddr[index] = data
+            index += 1
+            if index >= sourceAddr.count {
+                break
+            }
+        }
+
+        ipHeader.sourceAddress = sourceAddr;
+        return ipHeader
+    }
 
     func socket(socket:CFSocket, didReadData data:Data?) {
         var ipHeaderData:NSData?
@@ -371,38 +397,36 @@ public class SwiftPing: NSObject, StreamDelegate {
         var icmpHeaderData:NSData?
         var icmpData:NSData?
 
-        let extractIPAddressBlock: () -> String? = {
-            if ipHeaderData == nil {
-                return nil
+        if !ICMPExtractResponseFromData(data: data! as NSData,
+                                        ipHeaderData: &ipHeaderData,
+                                        ipData: &ipData,
+                                        icmpHeaderData: &icmpHeaderData,
+                                        icmpData: &icmpData) {
+            print("ICMPExtractResponseFromData Failed")
+            var recvIP = ""
+            if let headerData = ipHeaderData,
+               let ipHeader = extractIPHeader(ipHeaderData: headerData) {
+                let sourceAddr = ipHeader.sourceAddress
+                print("\(sourceAddr[0]).\(sourceAddr[1]).\(sourceAddr[2]).\(sourceAddr[3])")
+                recvIP = "\(sourceAddr[0]).\(sourceAddr[1]).\(sourceAddr[2]).\(sourceAddr[3])"
             }
 
-            var bytes:UnsafeRawPointer = (ipHeaderData?.bytes)!
-            let ipHeader:IPHeader = (withUnsafePointer(to: &bytes) { (temp) in
-                unsafeBitCast(temp, to: IPHeader.self)
-            })
-
-            let sourceAddr:[UInt8] = ipHeader.sourceAddress
-
-            print("\(sourceAddr[0]).\(sourceAddr[1]).\(sourceAddr[2]).\(sourceAddr[3])")
-            return "\(sourceAddr[0]).\(sourceAddr[1]).\(sourceAddr[2]).\(sourceAddr[3])"
-        }
-
-        if !ICMPExtractResponseFromData(data: data! as NSData, ipHeaderData: &ipHeaderData, ipData: &ipData, icmpHeaderData: &icmpHeaderData, icmpData: &icmpData) {
-            print("ICMPExtractResponseFromData Failed")
-            if (ipHeaderData != nil && ip == extractIPAddressBlock()) {
+            if (ipHeaderData != nil && ip == recvIP) {
                 return
             }
         }
 
+        var pingLog = packetLog[Int(currentSequenceNumber)]
+        pingLog.endDate = Date()
         let error = NSError(domain: NSURLErrorDomain, code: NSURLErrorCannotDecodeRawData, userInfo: nil)
-        let response:PingResponse = PingResponse(id: identifier!, ipAddress: nil, sequenceNumber: Int64(currentSequenceNumber), duration: Date().timeIntervalSince(currentStartDate!), error: error)
+        let duration = (pingLog.endDate?.timeIntervalSince(pingLog.startDate))!
+        let response:PingResponse = PingResponse(id: identifier!, ipAddress: nil, sequenceNumber: Int64(currentSequenceNumber), duration: duration, error: error)
         if observer != nil {
             observer!(self, response)
         }
 
         return scheduleNextPing()
     }
-
 
     func sendPing() {
         if (!isPinging) {
@@ -415,7 +439,7 @@ public class SwiftPing: NSObject, StreamDelegate {
         let icmpPackage:NSData = ICMPPackageCreate(identifier: UInt16(identifier!), sequenceNumber: UInt16(currentSequenceNumber), payloadSize: UInt32(configuration!.payloadSize))!;
 
         let log = PingLog(sequenceNumber: currentSequenceNumber, startDate: Date())
-        packetLog.append(log)
+        packetLog.insert(log, at: Int(currentSequenceNumber))
 
         let socketError:CFSocketError = CFSocketSendData(socket!, ipv4address! as CFData, icmpPackage as CFData, configuration!.timeOutInterval)
         if socketError == CFSocketError.success {
@@ -427,6 +451,7 @@ public class SwiftPing: NSObject, StreamDelegate {
             return scheduleNextPing()
         }
         else if socketError == CFSocketError.error {
+            print("CFSocketSendData Error")
             let error = NSError(domain: NSURLErrorDomain, code:NSURLErrorCannotFindHost, userInfo: [:])
             let response:PingResponse = PingResponse(id: identifier!, ipAddress: nil, sequenceNumber: Int64(currentSequenceNumber), duration: Date().timeIntervalSince(log.startDate), error: error)
             if observer != nil {

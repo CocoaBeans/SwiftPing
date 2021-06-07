@@ -11,12 +11,15 @@ import XCTest
 
 class SwiftPingTest: XCTestCase {
 
+    private var pinger: SwiftPing?
+
     override func setUpWithError() throws {
         // Put setup code here. This method is called before the invocation of each test method in the class.
     }
 
     override func tearDownWithError() throws {
         // Put teardown code here. This method is called after the invocation of each test method in the class.
+        print("pinger: \(String(describing: pinger))")
     }
 
     func testExample() throws {
@@ -42,8 +45,9 @@ class SwiftPingTest: XCTestCase {
             XCTFail()
             return
         }
+        pinger = ping
 
-        ping.start()
+        DispatchQueue.main.async { self.pinger?.start() }
         RunLoop.main.run(until: Date(timeIntervalSinceNow: 111))
     }
 
