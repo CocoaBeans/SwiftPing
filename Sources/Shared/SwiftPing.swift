@@ -21,7 +21,7 @@ public let sharedPingController = SwiftPing(host: "0.0.0.0", configuration: Ping
 
 public func getIPv4AddressFromHost(host:String, error:AutoreleasingUnsafeMutablePointer<NSError?>) -> Data? {
     var streamError:CFStreamError = CFStreamError()
-    let cfhost = CFHostCreateWithName(nil, host as CFString).takeRetainedValue()
+    let cfhost = CFHostCreateWithName(kCFAllocatorDefault, host as CFString).takeRetainedValue()
     let status = CFHostStartInfoResolution(cfhost, .addresses, &streamError)
     var data:Data?
 
@@ -41,6 +41,7 @@ public func getIPv4AddressFromHost(host:String, error:AutoreleasingUnsafeMutable
             return nil
         }
 
+        assert(success == true)
         for address in addresses {
             let addressData = address as! NSData
             let addrin = addressData.bytes.assumingMemoryBound(to: sockaddr.self).pointee
@@ -486,7 +487,7 @@ public class SwiftPing: NSObject, StreamDelegate {
         }
 
         typealias Block = @convention(block) () -> ()
-        let block: Block = timeoutBlock as! Block
+        let block: Block = timeoutBlock!
         let dispatchTime: DispatchTime = DispatchTime.now() + Double(Int64((configuration?.pingInterval)! * Double(NSEC_PER_SEC)))
 
         currentQueue?.asyncAfter(deadline: dispatchTime, execute: block)

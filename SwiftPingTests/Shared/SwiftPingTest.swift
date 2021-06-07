@@ -47,7 +47,8 @@ class SwiftPingTest: XCTestCase {
         }
         pinger = ping
 
-        DispatchQueue.main.async { self.pinger?.start() }
+        //DispatchQueue.main.async { ping.start() }
+        ping.start()
         RunLoop.main.run(until: Date(timeIntervalSinceNow: 111))
     }
 

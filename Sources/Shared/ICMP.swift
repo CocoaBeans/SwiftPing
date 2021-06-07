@@ -112,16 +112,50 @@ enum ICMPType:UInt8{
 	return package;
 }
 
-func IMCPPacketSize() -> Int {
+@inline(__always) func IMCPPacketSize() -> Int {
 	IPHeaderSize()+ICMPHeaderSize()
 }
 
-private func ICMPHeaderSize() -> Int {
+@inline(__always) func ICMPHeaderSize() -> Int {
 	MemoryLayout<ICMPHeader>.size
 }
 
-private func IPHeaderSize() -> Int {
+@inline(__always) func IPHeaderSize() -> Int {
 	MemoryLayout<IPHeader>.size
+}
+
+@inline(__always) func ICMPExtractIPHeader(ipHeaderData: NSData?) -> IPHeader? {
+	if ipHeaderData == nil {
+		return nil
+	}
+
+	let bytes:UnsafeRawPointer = (ipHeaderData?.bytes)!
+	// The following used to be handled by a single call to unsafeBitCast?
+//	let ipHeader: IPHeader = (withUnsafePointer(to: &bytes) { (temp) in
+//		unsafeBitCast(temp, to: IPHeader.self)
+//	})
+	// TODO: Revisit if this is the best way to do it
+	let truncatedSize = MemoryLayout<IPHeader>.size - (MemoryLayout<[UInt8]>.size * 2)
+	var ipHeader: IPHeader = IPHeader(versionAndHeaderLength: 0, differentiatedServices: 0, totalLength: 0, identification: 0, flagsAndFragmentOffset: 0, timeToLive: 0, protocol: 0, headerChecksum: 0, sourceAddress: [], destinationAddress: [])
+	withUnsafeMutableBytes(of: &ipHeader) { (pointer: UnsafeMutableRawBufferPointer) -> Void in
+		// We are truncating how much data is copied into the struct because it crashes when we copy more
+		memcpy(pointer.baseAddress!, bytes, truncatedSize)
+	}
+	let srcAddrData = (ipHeaderData?.subdata(with: NSMakeRange(truncatedSize, MemoryLayout<[UInt8]>.size)))!
+
+	var sourceAddr:[UInt8] = [UInt8](repeating: 0,  count: 4)
+	var index = 0
+	for data in srcAddrData {
+		sourceAddr[index] = data
+		index += 1
+		if index >= sourceAddr.count {
+			break
+		}
+	}
+
+	ipHeader.sourceAddress = sourceAddr;
+	//print("ipHeader: \(ipHeader)")
+	return ipHeader
 }
 
 @inline(__always) func ICMPExtractResponseFromData(data:NSData,
@@ -140,20 +174,20 @@ private func IPHeaderSize() -> Int {
 	let mutableBytes = buffer.mutableBytes
 
     // TODO: Make this work with unsafeBitCast() instead of memcpy
-//	var ipHeader = withUnsafeBytes(of: &mutableBytes) {
-//		(pointer: UnsafeRawBufferPointer) in
-//		unsafeBitCast(pointer, to: IPHeader.self)
-//	}
 //	let ipHeader = (withUnsafePointer(to: mutableBytes) { (temp) in
 //		unsafeBitCast(temp, to: IPHeader.self)
 //	})
-	var ipHeader: IPHeader = IPHeader(versionAndHeaderLength: 0, differentiatedServices: 0, totalLength: 0, identification: 0, flagsAndFragmentOffset: 0, timeToLive: 0, protocol: 0, headerChecksum: 0, sourceAddress: [], destinationAddress: [])
-	withUnsafeMutableBytes(of: &ipHeader) { (pointer: UnsafeMutableRawBufferPointer) -> Void in
-        // We are truncating how much data is copied into the struct because it crashes when we copy more
-		let truncatedSize = MemoryLayout<IPHeader>.size - (MemoryLayout<[UInt8]>.size * 2)
-		memcpy(pointer.baseAddress!, mutableBytes, truncatedSize)
+//	var ipHeader: IPHeader = IPHeader(versionAndHeaderLength: 0, differentiatedServices: 0, totalLength: 0, identification: 0, flagsAndFragmentOffset: 0, timeToLive: 0, protocol: 0, headerChecksum: 0, sourceAddress: [], destinationAddress: [])
+//	withUnsafeMutableBytes(of: &ipHeader) { (pointer: UnsafeMutableRawBufferPointer) -> Void in
+//		// We are truncating how much data is copied into the struct because it crashes when we copy more
+//		let truncatedSize = MemoryLayout<IPHeader>.size - (MemoryLayout<[UInt8]>.size * 2)
+//		memcpy(pointer.baseAddress!, mutableBytes, truncatedSize)
+//	}
+	guard let ipHeaderDataLocal = buffer.subdata(with: NSMakeRange(0, IPHeaderSize())) as NSData?,
+		  let ipHeader: IPHeader = ICMPExtractIPHeader(ipHeaderData: ipHeaderDataLocal)
+	else {
+		return false
 	}
-	//print("ipHeader: \(ipHeader)")
 
 	assert((ipHeader.versionAndHeaderLength & 0xF0) == 0x40)     // IPv4
 	assert(ipHeader.protocol == 1)                               // ICMP
